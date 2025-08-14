@@ -1,33 +1,63 @@
 // Importujemy potrzebne klasy z biblioteki discord.js
-const { Client, GatewayIntentBits } = require('discord.js');
+const { Client, GatewayIntentBits } = require("discord.js");
 
-// Tworzymy nową instancję klienta Discord.js. 
-// Określamy 'intents', czyli uprawnienia, jakich bot potrzebuje.
-const client = new Client({ 
+// 🔹 KONFIGURACJA
+// Zamiast wpisywać token i ID, pobieramy je ze zmiennych środowiskowych.
+const TOKEN = process.env.TOKEN;
+const GUILD_ID = process.env.GUILD_ID;
+const CHANNEL_ID = process.env.CHANNEL_ID; // Bierzemy z .env, a nie z kodu.
+const SERVER_TEXT = "miamirp.pl"; // Tekst do wyszukania w szczegółach aktywności
+
+// 🔹 UTWORZENIE BOTA
+const client = new Client({
     intents: [
-        GatewayIntentBits.Guilds, // Uprawnienia do serwerów (guilds)
-        GatewayIntentBits.GuildMessages, // Uprawnienia do odczytywania wiadomości na serwerach
-        GatewayIntentBits.MessageContent, // Uprawnienia do odczytywania treści wiadomości
-    ],
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMembers,
+        GatewayIntentBits.GuildPresences
+    ]
 });
 
-// Zdarzenie 'ready' uruchamia się, gdy bot pomyślnie się zaloguje.
-client.on('ready', () => {
-    console.log(`Zalogowano jako ${client.user.tag}!`);
-    console.log(`Bot działa i jest gotowy do pracy!`);
+client.once("ready", () => {
+    console.log(`✅ Zalogowano jako ${client.user.tag}`);
+    updateCount();
+    setInterval(updateCount, 30000); // co 30 sekund
 });
 
-// Zdarzenie 'messageCreate' uruchamia się za każdym razem, gdy na serwerze pojawi się wiadomość.
-client.on('messageCreate', message => {
-    // Sprawdzamy, czy wiadomość nie pochodzi od samego bota, żeby uniknąć pętli
-    if (message.author.bot) return;
+async function updateCount() {
+    const guild = await client.guilds.fetch(GUILD_ID);
+    await guild.members.fetch(); // pobiera listę członków
 
-    // Prosty przykład reakcji na wiadomość '!ping'
-    if (message.content === '!ping') {
-        message.reply('Pong!');
+    let activeCount = 0;
+    let activePlayers = [];
+
+    guild.members.cache.forEach(member => {
+        if (!member.presence || !member.presence.activities.length) return;
+
+        member.presence.activities.forEach(activity => {
+            if (activity.name === "FiveM") {
+                const details = (activity.details || "").toLowerCase();
+                const state = (activity.state || "").toLowerCase();
+                if (details.includes(SERVER_TEXT) || state.includes(SERVER_TEXT)) {
+                    activeCount++;
+                    activePlayers.push(member.user.tag);
+                }
+            }
+        });
+    });
+
+    // Zmiana nazwy kanału
+    const channel = guild.channels.cache.get(CHANNEL_ID);
+    if (channel) {
+        channel.setName(`Aktywnych: ${activeCount}`).catch(console.error);
     }
-});
 
-// Bot loguje się do Discorda używając tokenu pobranego ze zmiennych środowiskowych.
-// To kluczowe dla bezpieczeństwa, aby token nie był w kodzie!
-client.login(process.env.TOKEN);
+    // Log w konsoli
+    console.clear();
+    console.log(`🔹 Graczy na ${SERVER_TEXT}: ${activeCount}`);
+    if (activePlayers.length > 0) {
+        console.log("Lista graczy:");
+        activePlayers.forEach(player => console.log(`- ${player}`));
+    }
+}
+
+client.login(TOKEN);
